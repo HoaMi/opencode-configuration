@@ -1,0 +1,770 @@
+{
+  // ── Schema & providers ───────────────────────────────────────────────────────
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": [
+    "github-copilot",
+    "anthropic"
+  ],
+  "model": "github-copilot/claude-sonnet-4.6",
+  "small_model": "github-copilot/claude-haiku-4.5",
+  // Default agent at startup — lightweight, escalates to @build when needed.
+  "default_agent": "build-light",
+
+  // ── TUI ─────────────────────────────────────────────────────────────────────
+  "tui": {
+    // macOS-style scroll acceleration (overrides scroll_speed when enabled)
+    "scroll_acceleration": { "enabled": true },
+    // auto = adapts to terminal width; stacked = single column always
+    "diff_style": "auto"
+  },
+
+  // ── Compaction (long sessions with build/debug agents) ───────────────────────
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    // Token buffer to avoid overflow during compaction
+    "reserved": 10000
+  },
+
+  // ── MCP servers ─────────────────────────────────────────────────────────────
+  "mcp": {
+    // Brave Search — web search, news, images, videos, AI summarizer.
+    // API key: export BRAVE_API_KEY="BSA-xxx..." in ~/.zshrc
+    // Free tier: https://api-dashboard.search.brave.com/register
+    "brave_search": {
+      "type": "local",
+      "command": ["npx", "-y", "@brave/brave-search-mcp-server"],
+      "environment": {
+        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
+      },
+      "enabled": true
+    },
+    // GitLab MCP Server — https://docs.gitlab.com/user/gitlab_duo/mcp_server/
+    // Auth: OAuth 2.0 Dynamic Client Registration (automatic on first use)
+    "gitlab": {
+      "type": "remote",
+      "url": "https://gitlab.com/api/v4/mcp",
+      "enabled": true
+    },
+    // Trivy MCP — filesystem, image and repository vulnerability scanning.
+    // Requires: trivy CLI (brew install trivy) + plugin (trivy plugin install mcp)
+    // Restricted globally — enabled only on @security agent.
+    "trivy": {
+      "type": "local",
+      "command": ["trivy", "mcp"],
+      "enabled": true
+    }
+  },
+
+  // ── Global tool restrictions ─────────────────────────────────────────────────
+  // Brave Search, GitLab and Trivy are disabled globally to avoid burning context.
+  // Re-enabled selectively per agent via agent.tools overrides below.
+  "tools": {
+    "brave_search_*": false,
+    "gitlab_*": false,
+    "trivy_*": false
+  },
+
+  // ── Global permissions ───────────────────────────────────────────────────────
+  "permission": {
+    // Protect .env files from accidental reads
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    },
+    // Bash: very restrictive — only read-only git introspection and search allowed.
+    // Everything else requires explicit user approval.
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "grep *": "allow",
+      "rg *": "allow",
+      // Destructive commands always denied at global level
+      "git push*": "deny",
+      "rm -rf*": "deny"
+    },
+    // Doom loop: ask the user instead of silently denying
+    "doom_loop": "ask"
+  },
+
+  // ── Custom slash commands ────────────────────────────────────────────────────
+  "command": {
+    // /commit — Haiku 4.5 (cheapest) is sufficient for commit message generation
+    "commit": {
+      "template": "Generate a conventional commit message for the current changes. Run git diff --cached first (staged). If empty, run git diff (unstaged) and git log -5 --oneline for context. Output only the commit message — no explanation, no preamble.",
+      "description": "Generate conventional commit message from current changes",
+      "agent": "mini"
+    },
+    // /search — Full Brave Search synthesis via @build
+    "search": {
+      "template": "Perform a thorough web search on: {{input}}. Use brave_web_search to find the most relevant and up-to-date information. If relevant, also use brave_news_search for recent news and updates. Synthesize the results in a clear, structured format with sources (URLs). If a result warrants deeper reading, use webfetch to retrieve the full page content.",
+      "description": "Web search via Brave Search — structured synthesis with sources",
+      "agent": "build"
+    },
+    // /review — Full review pipeline: explore → review → security if needed
+    "review": {
+      "template": "Review the following code changes thoroughly. First analyze with @explore to understand the scope, then provide a detailed code review following the team's conventions. If you spot security concerns, escalate to @security. Target: {{input}}",
+      "description": "Full code review pipeline (explore → review → security if needed)",
+      "agent": "build"
+    },
+    // /audit — Security audit pipeline: explore → security → report
+    "audit": {
+      "template": "Perform a comprehensive security audit of: {{input}}. Start with @explore to map the attack surface, then use @security for deep analysis. Report findings with severity levels (🔴 Critical | 🟡 Important | 🟢 Suggestion).",
+      "description": "Security audit pipeline (explore → security → report)",
+      "agent": "build"
+    },
+    // /debug — Full debug pipeline: diagnose → fix → verify
+    "debug": {
+      "template": "Investigate and diagnose the following issue: {{input}}. Delegate to @debug for systematic root cause analysis — reproduce, observe, hypothesize, verify. After diagnosis, coordinate the fix with the appropriate specialist and verify resolution with @tester.",
+      "description": "Debug pipeline (debug → fix → verify)",
+      "agent": "build"
+    },
+    // /test — Test coverage analysis and gap filling
+    "test": {
+      "template": "Analyze the test coverage and quality for: {{input}}. Use @explore to map existing tests, then @tester to identify gaps, suggest new test cases, and implement the most critical missing tests. Run the test suite to validate.",
+      "description": "Test analysis and gap filling",
+      "agent": "build"
+    },
+    // /document — Auto-documentation pipeline: explore → docs
+    "document": {
+      "template": "Generate or update documentation for: {{input}}. Analyze the code first with @explore, then delegate to @docs to create clear, practical documentation adapted to the project's audience.",
+      "description": "Auto-documentation pipeline (explore → docs)",
+      "agent": "build"
+    },
+    // /refactor — Guided refactoring: architect → reviewer → implement → verify
+    "refactor": {
+      "template": "Analyze {{input}} for refactoring opportunities. Use @architect for design decisions, @reviewer for code quality assessment. Plan the refactoring in phases, implement improvements with tests, and verify no orphaned references with @explore.",
+      "description": "Guided refactoring pipeline (architect → reviewer → implement → verify)",
+      "agent": "build"
+    },
+    // /onboard — Codebase onboarding: explore → architect → docs
+    "onboard": {
+      "template": "Create an onboarding guide for this codebase focusing on: {{input}}. Use @explore to map the project structure, @architect to explain key design decisions, and @docs to produce a clear onboarding document.",
+      "description": "Codebase onboarding pipeline (explore → architect → docs)",
+      "agent": "build"
+    }
+  },
+
+  // ── Agents ───────────────────────────────────────────────────────────────────
+  "agent": {
+
+    // ─── Mini (Haiku 4.5 — ultra-lightweight) ────────────────────────────────
+    // Fastest and cheapest agent. Only micro-tasks: single-line edits, commit
+    // messages, quick Q&A. Can invoke @explore. Escalates to @build-light.
+    "mini": {
+      "description": "Ultra-lightweight agent via Haiku 4.5 — tiny edits, commit messages, quick Q&A. Escalates to @build-light for non-trivial tasks.",
+      "model": "github-copilot/claude-haiku-4.5",
+      "mode": "primary",
+      "color": "#34D399",
+      "temperature": 0.2,
+      "steps": 15,
+      "prompt": "{file:./prompts/mini.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "git push*": "deny",
+          "rm -rf*": "deny"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "task": {
+          // mini can only invoke lightweight read-only subagents
+          "*": "deny",
+          "explore": "allow"
+        },
+        "todowrite": "allow",
+        "todoread": "allow",
+        "question": "allow",
+        "codesearch": "allow",
+        "lsp": "allow",
+        "webfetch": "deny",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Build-light (Sonnet 4.6 — lightweight orchestrator) ─────────────────
+    // Token-efficient entry point for quick edits, Q&A and simple delegation.
+    // No Brave Search to keep context minimal. Escalates to @build for complex tasks.
+    "build-light": {
+      "description": "Lightweight orchestrator for quick edits, Q&A and simple delegation. No web search. Escalates to @build for complex multi-agent tasks.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "primary",
+      "color": "#818CF8",
+      "temperature": 0.3,
+      "steps": 30,
+      "prompt": "{file:./prompts/build-light.txt}",
+      "tools": {
+        "gitlab_*": true
+      },
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "git push*": "deny",
+          "rm -rf*": "deny"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "task": {
+          // build-light can invoke light subagents and escalate to build
+          "*": "deny",
+          "mini": "allow",
+          "explore": "allow",
+          "reviewer-light": "allow",
+          "tester-light": "allow",
+          "plan-light": "allow",
+          "build": "allow"
+        },
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Plan-light (Sonnet 4.6 — lightweight planner, read-only) ────────────
+    // Token-efficient planner. Read-only. Can invoke @explore for lookups.
+    // Escalates to @plan for architectural work.
+    "plan-light": {
+      "description": "Lightweight planner for simple task breakdowns. Sonnet 4.6, read-only, no web search. Escalates to @plan for architectural decisions.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "primary",
+      "color": "#FB923C",
+      "temperature": 0.2,
+      "steps": 20,
+      "prompt": "{file:./prompts/plan-light.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "task": {
+          "*": "deny",
+          "explore": "allow"
+        },
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "codesearch": "allow"
+      }
+    },
+
+    // ─── Build (Sonnet 4.6 — full orchestrator) ───────────────────────────────
+    // Main entry point for complex multi-agent workflows.
+    // Coordinates all specialists. Has Brave Search and GitLab access.
+    "build": {
+      "description": "Lead engineer and orchestrator: decomposes work, delegates to specialist subagents and enforces cross-cutting consistency.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "primary",
+      "color": "#6366F1",
+      "temperature": 0.3,
+      "steps": 100,
+      "prompt": "{file:./prompts/build.txt}",
+      "tools": {
+        "brave_search_*": true,
+        "gitlab_*": true
+      },
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "git push*": "deny",
+          "rm -rf*": "deny"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        // build can invoke all subagents
+        "task": {
+          "*": "allow"
+        },
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Plan (Opus 4.6 — strategic planner, read-only) ──────────────────────
+    // High-capability strategic planner. Use for complex features and
+    // architectural decisions. Has Brave Search for validating technology choices.
+    "plan": {
+      "description": "Strategic planner: analyzes requirements, decomposes tasks, identifies risks & dependencies. Read-only — no edits.",
+      "model": "github-copilot/claude-opus-4.6",
+      "mode": "primary",
+      "color": "#F97316",
+      "temperature": 0.2,
+      "steps": 40,
+      "prompt": "{file:./prompts/plan.txt}",
+      "tools": {
+        "brave_search_*": true,
+        "gitlab_*": true
+      },
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "task": {
+          "*": "deny",
+          "explore": "allow"
+        },
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "codesearch": "allow"
+      }
+    },
+
+    // ─── Explore (Haiku 4.5 — fast read-only codebase traversal) ─────────────
+    // Fastest agent for codebase exploration. Strictly read-only, no shell commands.
+    "explore": {
+      "description": "Fast codebase explorer via Haiku 4.5. Read-only grep/glob — no edits, no shell.",
+      "model": "github-copilot/claude-haiku-4.5",
+      "mode": "subagent",
+      "color": "#84CC16",
+      "temperature": 0.0,
+      "steps": 40,
+      "prompt": "{file:./prompts/explore.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow"
+      }
+    },
+
+    // ─── Reviewer-light (Haiku 4.5 — fast review of 1-3 files) ──────────────
+    // Token-efficient code reviewer. No edits, no shell. Escalates to @reviewer.
+    "reviewer-light": {
+      "description": "Quick code review via Haiku 4.5 — for small changes (1-3 files). No web search. Escalates to @reviewer for large PRs.",
+      "model": "github-copilot/claude-haiku-4.5",
+      "mode": "subagent",
+      "color": "#FCD34D",
+      "temperature": 0.1,
+      "steps": 15,
+      "prompt": "{file:./prompts/reviewer-light.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "todoread": "allow",
+        "question": "allow"
+      }
+    },
+
+    // ─── Tester-light (Haiku 4.5 — fast test verification) ───────────────────
+    // Token-efficient test assistant. Runs tests, writes simple unit tests.
+    // Escalates to @tester for strategy and complex scenarios.
+    "tester-light": {
+      "description": "Quick test checker via Haiku 4.5 — runs existing tests and writes simple unit tests. No web search. Escalates to @tester for strategy work.",
+      "model": "github-copilot/claude-haiku-4.5",
+      "mode": "subagent",
+      "color": "#6EE7B7",
+      "temperature": 0.2,
+      "steps": 20,
+      "prompt": "{file:./prompts/tester-light.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          // Allow running tests automatically
+          "npm test*": "allow",
+          "npm run test*": "allow",
+          "npx vitest*": "allow",
+          "npx jest*": "allow",
+          "pytest*": "allow",
+          "python -m pytest*": "allow",
+          "go test*": "allow",
+          "cargo test*": "allow",
+          "git diff*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Debug (Opus 4.6 — diagnostic specialist) ────────────────────────────
+    // Root cause analysis only — never fixes, only diagnoses and hands off.
+    // High-capability model justified by complex multi-hypothesis reasoning.
+    "debug": {
+      "description": "Diagnostic specialist: root cause analysis, stack trace interpretation, profiling, observability — diagnosis only, then handoff to specialists for fixes.",
+      "model": "github-copilot/claude-opus-4.6",
+      "mode": "subagent",
+      "color": "#F43F5E",
+      "temperature": 0.1,
+      "steps": 70,
+      "prompt": "{file:./prompts/debug.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git bisect*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          // Allow test/profiling commands for reproduction
+          "npm test*": "allow",
+          "npm run test*": "allow",
+          "pytest*": "allow",
+          "python -m pytest*": "allow",
+          "go test*": "allow",
+          "cargo test*": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny"
+        },
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Backend (Sonnet 4.6 — server-side specialist) ────────────────────────
+    "backend": {
+      "description": "Backend specialist: REST/GraphQL APIs, databases, microservices, performance and server-side architecture.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "subagent",
+      "color": "#3B82F6",
+      "temperature": 0.3,
+      "steps": 80,
+      "prompt": "{file:./prompts/backend.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "npm test*": "allow",
+          "npm run test*": "allow",
+          "npx vitest*": "allow",
+          "pytest*": "allow",
+          "python -m pytest*": "allow",
+          "go test*": "allow",
+          "cargo test*": "allow",
+          "npm run lint*": "allow",
+          "ruff check*": "allow",
+          "golangci-lint*": "allow",
+          "cargo clippy*": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny",
+          "git commit*": "ask"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Frontend (Sonnet 4.6 — UI/UX specialist) ────────────────────────────
+    "frontend": {
+      "description": "Frontend specialist: UI/UX, React/Vue/Angular components, CSS, accessibility and web performance.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "subagent",
+      "color": "#A855F7",
+      "temperature": 0.4,
+      "steps": 60,
+      "prompt": "{file:./prompts/frontend.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "npm test*": "allow",
+          "npm run test*": "allow",
+          "npx vitest*": "allow",
+          "npx playwright*": "allow",
+          "npm run lint*": "allow",
+          "npm run build*": "ask",
+          "rm -rf*": "deny",
+          "git push*": "deny",
+          "git commit*": "ask"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Security (Opus 4.6 — cybersecurity specialist) ──────────────────────
+    // Opus justified: complex multi-vector threat analysis.
+    // Has exclusive access to Trivy MCP tools for container/repo scanning.
+    // edit is "ask" — requires explicit approval before any file modification.
+    "security": {
+      "description": "Cybersecurity expert: code auditing, OWASP Top 10, vulnerability detection, hardening, compliance and Trivy MCP scanning.",
+      "model": "github-copilot/claude-opus-4.6",
+      "mode": "subagent",
+      "color": "#EF4444",
+      "temperature": 0.0,
+      "steps": 60,
+      "prompt": "{file:./prompts/security.txt}",
+      "tools": {
+        "trivy_*": true
+      },
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny"
+        },
+        "edit": "ask",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow"
+      }
+    },
+
+    // ─── DevOps (Sonnet 4.6 — CI/CD and infrastructure specialist) ───────────
+    // Has GitLab access for pipeline management.
+    "devops": {
+      "description": "DevOps/SRE expert: CI/CD pipelines, containers, Kubernetes, IaC (Terraform), observability and reliability.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "subagent",
+      "color": "#22C55E",
+      "temperature": 0.2,
+      "steps": 70,
+      "prompt": "{file:./prompts/devops.txt}",
+      "tools": {
+        "gitlab_*": true
+      },
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "docker ps*": "allow",
+          "docker images*": "allow",
+          "kubectl get*": "allow",
+          "kubectl describe*": "allow",
+          "terraform plan*": "allow",
+          "terraform validate*": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny",
+          "kubectl delete*": "ask",
+          "terraform apply*": "ask",
+          "terraform destroy*": "deny"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Reviewer (Sonnet 4.6 — code review specialist, read-only) ───────────
+    "reviewer": {
+      "description": "Code reviewer: PR/MR analysis, code quality, conventions, technical debt and constructive feedback — read-only.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "subagent",
+      "color": "#F59E0B",
+      "temperature": 0.1,
+      "steps": 40,
+      "prompt": "{file:./prompts/reviewer.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "question": "allow"
+      }
+    },
+
+    // ─── Architect (Opus 4.6 — system design and ADRs) ───────────────────────
+    // Opus justified: deep trade-off reasoning and long-horizon design decisions.
+    // edit is "ask" — only for writing ADR files, not implementation code.
+    "architect": {
+      "description": "Software architect: system design, architectural patterns, ADRs, scalability and technology selection.",
+      "model": "github-copilot/claude-opus-4.6",
+      "mode": "subagent",
+      "color": "#06B6D4",
+      "temperature": 0.5,
+      "steps": 60,
+      "prompt": "{file:./prompts/architect.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "ask",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow"
+      }
+    },
+
+    // ─── Tester (Sonnet 4.6 — QA and test strategy specialist) ──────────────
+    "tester": {
+      "description": "QA/testing expert: test strategy, TDD/BDD, unit, integration, E2E and performance testing.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "mode": "subagent",
+      "color": "#10B981",
+      "temperature": 0.2,
+      "steps": 60,
+      "prompt": "{file:./prompts/tester.txt}",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "npm test*": "allow",
+          "npm run test*": "allow",
+          "npx vitest*": "allow",
+          "npx jest*": "allow",
+          "npx playwright*": "allow",
+          "pytest*": "allow",
+          "python -m pytest*": "allow",
+          "go test*": "allow",
+          "cargo test*": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "git diff*": "allow",
+          "rm -rf*": "deny",
+          "git push*": "deny",
+          "git commit*": "ask"
+        },
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "question": "allow",
+        "doom_loop": "ask"
+      }
+    },
+
+    // ─── Docs (Haiku 4.5 — technical writer) ────────────────────────────────
+    // Haiku is sufficient for documentation tasks (low reasoning complexity).
+    "docs": {
+      "description": "Technical writer: READMEs, JSDoc/TSDoc, guides, ADRs, changelogs and API docs (OpenAPI/AsyncAPI).",
+      "model": "github-copilot/claude-haiku-4.5",
+      "mode": "subagent",
+      "color": "#8B5CF6",
+      "temperature": 0.3,
+      "steps": 40,
+      "prompt": "{file:./prompts/docs.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+        "webfetch": "allow",
+        "question": "allow"
+      }
+    }
+  },
+
+  // ── Keybinds ─────────────────────────────────────────────────────────────────
+  // Leader key: ctrl+x
+  //   ctrl+x → / ←  : cycle child sessions (subagent sessions)
+  //   ctrl+x n       : new session
+  //   ctrl+x a       : agent list (Tab also cycles primary agents)
+  "keybinds": {
+    "leader": "ctrl+x"
+  }
+}
