@@ -9,6 +9,7 @@ Personal repository to manage and version [opencode](https://opencode.ai) config
 ```
 .
 ├── opencode.json          # Master config (models, agents, tools, permissions)
+├── validate-config.mjs    # JSON5-aware config validator (node validate-config.mjs)
 ├── package.json           # Bun workspace
 ├── bun.lock              # Lockfile (reproducibility)
 ├── prompts/              # Custom prompts per agent
@@ -28,7 +29,7 @@ Personal repository to manage and version [opencode](https://opencode.ai) config
 - **Edit config** → JSON editor (`opencode.json`)
 - **Add agent** → create `prompts/<name>.txt`, declare in `opencode.json`
 - **Add skill** → create `skills/<name>/SKILL.md` + resources
-- **Validate** → reload opencode (`ctrl+x n`)
+- **Validate** → `node validate-config.mjs`, then reload opencode (`ctrl+x n`)
 
 ## Slash Commands
 
@@ -69,6 +70,10 @@ export OPENCODE_MODEL_ARCHITECT="github-copilot/claude-opus-4.6"
 export OPENCODE_MODEL_TESTER="github-copilot/claude-sonnet-4.6"
 export OPENCODE_MODEL_DOCS="opencode/minimax-m2.5-free"
 export OPENCODE_MODEL_GITLAB_OPERATOR="opencode/minimax-m2.5-free"
+
+# ── AWS MCP servers ───────────────────────────────────────────────────────────
+export AWS_PROFILE="default"           # AWS profile for aws-cost, aws-api, eks MCPs
+export AWS_REGION="eu-west-3"          # AWS region
 ```
 
 ## Brainstorm Mode
@@ -127,6 +132,12 @@ export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.2-codex"
 | `gitlab` | remote | `@build`, `@devops` | OAuth2 on first use |
 | `trivy` | local | `@security` | `brew install trivy` + `trivy plugin install mcp` |
 | `kubernetes` | local | `@devops`, `@debug` | `kubectl` configured context |
+| `aws-cost` | local | `@devops`, `@architect` | `AWS_PROFILE` + `AWS_REGION` + IAM |
+| `aws-docs` | local | all — ask first | none (public docs) |
+| `aws-api` | local | `@devops` | `AWS_PROFILE` + `AWS_REGION` (preview) |
+| `eks` | local | `@devops`, `@debug` | `AWS_PROFILE` + `AWS_REGION` |
+| `git` | local | `@reviewer`, `@debug`, `@explore` | none (uses CWD) — write tools blocked globally |
+| `filesystem` | local | `@build`, `@backend`, `@frontend`, `@devops`, `@docs` | none — allowed root: `$HOME` |
 
 ### GitLab MCP
 
@@ -200,7 +211,7 @@ The Kubernetes MCP server wraps `kubectl` to expose cluster resources to agents.
 | Setting | Value |
 |---------|-------|
 | Type | Local |
-| Command | `npx -y @modelcontextprotocol/server-kubernetes` |
+| Command | `npx -y mcp-server-kubernetes` |
 | Agents | `@devops`, `@debug` |
 
 **Prerequisites:**
@@ -220,8 +231,7 @@ kubectl get nodes  # sanity check
 
 - `package.json` and `bun.lock` must stay in git (reproducible dependencies)
 - `node_modules/` is ignored (`.gitignore`)
-- No test suite — validate changes by opening opencode
-- All files in **English** except local documentation
+- Run `node validate-config.mjs` after editing `opencode.json` to catch parse errors and missing agent fields before reloading opencode
 
 ## Links
 

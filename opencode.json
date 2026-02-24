@@ -66,7 +66,83 @@
     // Restricted globally — enabled only on @devops and @debug agents.
     "kubernetes": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-kubernetes"],
+      "command": ["npx", "-y", "mcp-server-kubernetes"],
+      "enabled": true
+    },
+
+    // AWS Billing & Cost Management MCP — cost analysis, budgets, anomaly detection,
+    // Savings Plans, Reserved Instances, Compute Optimizer, right-sizing recommendations.
+    // Requires: AWS_PROFILE + AWS_REGION env vars. IAM perms: ce:*, budgets:*, compute-optimizer:*
+    // Restricted globally — enabled only on @devops and @architect.
+    "aws-cost": {
+      "type": "local",
+      "command": ["uvx", "awslabs.billing-cost-management-mcp-server@latest"],
+      "environment": {
+        "AWS_PROFILE": "{env:AWS_PROFILE}",
+        "AWS_REGION": "{env:AWS_REGION}",
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "enabled": true
+    },
+
+    // AWS Documentation MCP — latest AWS docs, API references, What's New posts.
+    // Read-only. Enabled globally — agents must ask before use (like context7).
+    "aws-docs": {
+      "type": "local",
+      "command": ["uvx", "awslabs.aws-documentation-mcp-server@latest"],
+      "environment": {
+        "AWS_DOCUMENTATION_PARTITION": "aws",
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "enabled": true
+    },
+
+    // AWS API MCP (preview) — comprehensive AWS API interactions with CloudTrail audit.
+    // Requires: AWS credentials in env (AWS_PROFILE or access keys).
+    // Restricted globally — enabled only on @devops (high privilege).
+    "aws-api": {
+      "type": "local",
+      "command": ["uvx", "mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp"],
+      "environment": {
+        "AWS_PROFILE": "{env:AWS_PROFILE}",
+        "AWS_REGION": "{env:AWS_REGION}"
+      },
+      "enabled": true
+    },
+
+    // Amazon EKS MCP — EKS cluster management, Kubernetes resources, CloudWatch, IAM.
+    // Requires: AWS_PROFILE + AWS_REGION. Add --allow-write / --allow-sensitive-data-access
+    // as args if write ops or pod log access is needed (disabled by default — production safety).
+    // Restricted globally — enabled only on @devops and @debug.
+    "eks": {
+      "type": "local",
+      "command": ["uvx", "awslabs.eks-mcp-server@latest"],
+      "environment": {
+        "AWS_PROFILE": "{env:AWS_PROFILE}",
+        "AWS_REGION": "{env:AWS_REGION}",
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "enabled": true
+    },
+
+    // Git MCP — semantic git operations (status, diff, log, show, blame, branch + write ops).
+    // No --repository flag = defaults to process CWD (opencode's working directory).
+    // Write tools (git_add, git_commit, git_reset, git_create_branch, git_checkout) are
+    // disabled globally — only read tools are re-enabled per agent.
+    // Enabled on @reviewer, @debug, @explore for read-only git context.
+    "git": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-git"],
+      "enabled": true
+    },
+
+    // Filesystem MCP — structured file/directory operations beyond built-in read/edit/glob.
+    // Adds: create_directory, move_file, directory_tree, search_files, get_file_info.
+    // Allowed root: {env:HOME} — assumes env var expansion in command args (adjust if needed).
+    // Restricted globally — enabled on implementation and docs agents only.
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "{env:HOME}"],
       "enabled": true
     }
   },
@@ -79,7 +155,22 @@
   "tools": {
     "gitlab_*": false,
     "trivy_*": false,
-    "mcp__kubernetes__*": false
+    "mcp__kubernetes__*": false,
+    // AWS tools restricted globally — re-enabled per agent below.
+    // aws-docs is globally enabled (read-only, ask-first policy enforced via prompts).
+    "mcp__aws-cost__*": false,
+    "mcp__aws-api__*": false,
+    "mcp__eks__*": false,
+    // Git MCP — disabled globally, re-enabled (read-only) on @reviewer, @debug, @explore.
+    // Write tools blocked globally even on agents that have the server enabled.
+    "mcp__git__*": false,
+    "mcp__git__git_commit": false,
+    "mcp__git__git_add": false,
+    "mcp__git__git_reset": false,
+    "mcp__git__git_create_branch": false,
+    "mcp__git__git_checkout": false,
+    // Filesystem MCP — disabled globally, re-enabled on implementation and docs agents.
+    "mcp__filesystem__*": false
   },
 
   // ── Global permissions ───────────────────────────────────────────────────────
@@ -175,6 +266,14 @@
   },
 
   // ── Agents ───────────────────────────────────────────────────────────────────
+  // Permission profiles (implicit — not a config key, for documentation only):
+  //
+  //   readonly    bash:deny, edit:deny, read:allow          → plan, explore, reviewer, debug
+  //   implementer bash:ask,  edit:allow, read:allow         → build, backend, frontend, docs
+  //   operator    bash:allow(scoped), edit:allow, read:allow → devops, architect (infra writes)
+  //   restricted  bash:deny, edit:deny, read:deny            → mini, gitlab-operator (curl-only)
+  //
+  // All agents inherit global deny-by-default; each profile adds only what is needed.
   "agent": {
 
     // ─── Mini (MiniMax M2.5 Free — ultra-lightweight) ────────────────────────
@@ -230,7 +329,8 @@
       "steps": 100,
       "prompt": "{file:./prompts/build.txt}",
       "tools": {
-        "gitlab_*": true
+        "gitlab_*": true,
+        "mcp__filesystem__*": true
       },
       "permission": {
         "bash": {
@@ -289,7 +389,8 @@
         "todoread": "allow",
         "webfetch": "allow",
         "question": "allow",
-        "codesearch": "allow"
+        "codesearch": "allow",
+        "lsp": "allow"
       }
     },
 
@@ -303,6 +404,10 @@
       "temperature": 0.0,
       "steps": 40,
       "prompt": "{file:./prompts/explore.txt}",
+      "tools": {
+        // Read-only git context (log, blame, diff) — write tools blocked globally
+        "mcp__git__*": true
+      },
       "permission": {
         "bash": "deny",
         "edit": "deny",
@@ -325,7 +430,9 @@
       "steps": 70,
       "prompt": "{file:./prompts/debug.txt}",
       "tools": {
-        "mcp__kubernetes__*": true
+        "mcp__kubernetes__*": true,
+        "mcp__eks__*": true,
+        "mcp__git__*": true
       },
       "permission": {
         "bash": {
@@ -367,8 +474,11 @@
       "mode": "subagent",
       "color": "#3B82F6",
       "temperature": 0.3,
-      "steps": 80,
+      "steps": 65,
       "prompt": "{file:./prompts/backend.txt}",
+      "tools": {
+        "mcp__filesystem__*": true
+      },
       "permission": {
         "bash": {
           "*": "ask",
@@ -415,6 +525,9 @@
       "temperature": 0.4,
       "steps": 60,
       "prompt": "{file:./prompts/frontend.txt}",
+      "tools": {
+        "mcp__filesystem__*": true
+      },
       "permission": {
         "bash": {
           "*": "ask",
@@ -496,7 +609,11 @@
       "prompt": "{file:./prompts/devops.txt}",
       "tools": {
         "gitlab_*": true,
-        "mcp__kubernetes__*": true
+        "mcp__kubernetes__*": true,
+        "mcp__aws-cost__*": true,
+        "mcp__aws-api__*": true,
+        "mcp__eks__*": true,
+        "mcp__filesystem__*": true
       },
       "permission": {
         "bash": {
@@ -527,6 +644,7 @@
         "glob": "allow",
         "grep": "allow",
         "codesearch": "allow",
+        "lsp": "allow",
         "todowrite": "allow",
         "todoread": "allow",
         "webfetch": "allow",
@@ -544,6 +662,10 @@
       "temperature": 0.1,
       "steps": 40,
       "prompt": "{file:./prompts/reviewer.txt}",
+      "tools": {
+        // Git history and blame for richer review context — write tools blocked globally
+        "mcp__git__*": true
+      },
       "permission": {
         "bash": "deny",
         "edit": "deny",
@@ -574,6 +696,10 @@
       "temperature": 0.5,
       "steps": 60,
       "prompt": "{file:./prompts/architect.txt}",
+      "tools": {
+        // Cost data for cost-aware architectural decisions
+        "mcp__aws-cost__*": true
+      },
       "permission": {
         "bash": "deny",
         "edit": "ask",
@@ -584,7 +710,8 @@
         "todowrite": "allow",
         "todoread": "allow",
         "webfetch": "allow",
-        "question": "allow"
+        "question": "allow",
+        "lsp": "allow"
       }
     },
 
@@ -597,7 +724,7 @@
       "mode": "subagent",
       "color": "#0EA5E9",
       "temperature": 0.5,
-      "steps": 100,
+      "steps": 70,
       "prompt": "{file:./prompts/architect-brainstorm.txt}",
       "permission": {
         "bash": "deny",
@@ -707,9 +834,11 @@
     },
 
     // ─── GitLab (MiniMax M2.5 Free — GitLab REST API write operator) ─────────
+    // Dual-path pattern:
+    //   READ  operations (MR details, pipelines, issues) → use gitlab_* MCP tools
+    //   WRITE operations (MR comments, labels, approvals) → delegate to @gitlab-operator
     // Thin wrapper around curl + GITLAB_PERSONAL_ACCESS_TOKEN.
-    // Use for ALL write operations on GitLab (MR comments, labels, approvals)
-    // because the MCP remote server does not reliably support write operations.
+    // The MCP remote server does not reliably support write operations.
     // curl is restricted to gitlab.com/api/* only — no other domains allowed.
     "gitlab-operator": {
       "description": "GitLab REST API write operator: posts MR comments, labels and approvals via curl + GITLAB_PERSONAL_ACCESS_TOKEN. Use when MCP write operations fail.",
@@ -745,6 +874,9 @@
       "color": "#8B5CF6",
       "temperature": 0.3,
       "steps": 40,
+      "tools": {
+        "mcp__filesystem__*": true
+      },
       "prompt": "{file:./prompts/docs.txt}",
       "permission": {
         "bash": "deny",

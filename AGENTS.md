@@ -31,8 +31,8 @@ node_modules/        # Managed by Bun — do NOT commit
 # Install dependencies (Bun required)
 bun install
 
-# Validate JSON config (opencode.json supports // comments — use a tolerant parser)
-node -e "console.log('ok')"  # no build step; config is loaded directly by opencode
+# Validate JSON config (strips JSON5 comments, checks required agent fields)
+node validate-config.mjs
 ```
 
 There are no compile, lint or test commands — this repo contains no application code.
@@ -75,21 +75,21 @@ No automated test suite exists. To verify changes:
 
 | Agent          | Model           | Mode      | Token budget | Purpose |
 |----------------|-----------------|-----------|--------------|---------|
-| `mini`         | Haiku 4.5       | primary   | 15 steps     | Micro-edits, commit messages, quick Q&A |
+| `mini`         | MiniMax M2.5 Free | primary   | 15 steps     | Micro-edits, commit messages, quick Q&A |
 | `build`        | Sonnet 4.6      | primary   | 100 steps    | Full orchestrator, all specialists (default) |
 | `plan`         | Opus 4.6        | primary   | 40 steps     | Strategic planning, read-only |
-| `explore`      | Haiku 4.5       | subagent  | 40 steps     | Fast read-only codebase traversal |
+| `explore`      | MiniMax M2.5 Free | subagent  | 40 steps     | Fast read-only codebase traversal |
 | `debug`        | Opus 4.6        | subagent  | 70 steps     | Root cause analysis only — no edits |
-| `backend`      | Sonnet 4.6      | subagent  | 80 steps     | APIs, databases, server logic |
+| `backend`      | Sonnet 4.6      | subagent  | 65 steps     | APIs, databases, server logic |
 | `frontend`     | Sonnet 4.6      | subagent  | 60 steps     | UI, components, accessibility |
 | `security`     | Opus 4.6        | subagent  | 60 steps     | OWASP, vulnerability audits, Trivy |
 | `devops`       | Sonnet 4.6      | subagent  | 70 steps     | CI/CD, containers, infrastructure |
 | `reviewer`     | Sonnet 4.6      | subagent  | 40 steps     | PR review, code quality, read-only |
 | `architect`    | Opus 4.6        | subagent  | 60 steps     | System design, ADRs, trade-offs |
 | `tester`       | Sonnet 4.6      | subagent  | 60 steps     | Test strategy, TDD/BDD, E2E |
-| `docs`         | Haiku 4.5       | subagent  | 40 steps     | READMEs, JSDoc, changelogs |
-| `gitlab-operator` | Haiku 4.5    | subagent  | 20 steps     | GitLab REST write ops (MR comments, labels, approvals) via curl |
-| `architect-brainstorm` | Opus 4.6 | subagent | 100 steps | Brainstorm orchestrator — coordinates the two personas and synthesizes. **Manual only** via `/brainstorm` |
+| `docs`         | MiniMax M2.5 Free | subagent  | 40 steps     | READMEs, JSDoc, changelogs |
+| `gitlab-operator` | MiniMax M2.5 Free | subagent  | 20 steps     | GitLab REST write ops (MR comments, labels, approvals) via curl |
+| `architect-brainstorm` | Opus 4.6 | subagent | 70 steps | Brainstorm orchestrator — coordinates the two personas and synthesizes. **Manual only** via `/brainstorm` |
 | `arch-pragmatist` | Claude Opus 4.6 | subagent | 30 steps  | Debate persona: Pragmatist. Only invoked by `@architect-brainstorm` |
 | `arch-innovator` | GPT-5.2-Codex | subagent | 30 steps  | Debate persona: Innovator. Only invoked by `@architect-brainstorm` |
 
@@ -296,8 +296,14 @@ documentation work.
 | GitLab tools | deny (global) | Re-enabled on `@build`, `@devops` |
 | Trivy tools | deny (global) | Re-enabled on `@security` only |
 | Kubernetes tools | deny (global) | Re-enabled on `@devops`, `@debug` |
+| AWS Cost tools (`aws-cost`) | deny (global) | Re-enabled on `@devops`, `@architect` |
+| AWS API tools (`aws-api`) | deny (global) | Re-enabled on `@devops` only |
+| EKS tools | deny (global) | Re-enabled on `@devops`, `@debug` |
+| Git MCP tools | deny (global) | Read tools re-enabled on `@reviewer`, `@debug`, `@explore`; write tools (`git_commit`, `git_add`, `git_reset`, `git_create_branch`, `git_checkout`) remain blocked |
+| Filesystem MCP tools | deny (global) | Re-enabled on `@build`, `@backend`, `@frontend`, `@devops`, `@docs` |
+| AWS Docs tools (`aws-docs`) | allow (global) | Ask user before calling |
 | `webfetch` | allow (most agents) | Denied on `@mini` and `@gitlab-operator` only |
-| `lsp` | allow (most agents) | Denied on `@explore`, `@gitlab-operator` |
+| `lsp` | allow (most agents) | Denied on `@explore`, `@gitlab-operator`; explicitly allowed on `@plan`, `@architect`, `@devops` |
 
 The `doom_loop` policy is set to `ask` — agents that detect they are stuck must
 surface the situation to the user rather than retrying silently.
@@ -367,7 +373,13 @@ export OPENCODE_MODEL_GITLAB_OPERATOR="opencode/minimax-m2.5-free"
 | `context7` | remote (`https://mcp.context7.com/mcp`) | all agents — ask first | `CONTEXT7_API_KEY` env var |
 | `gitlab` | remote (`https://gitlab.com/api/v4/mcp`) | `@build`, `@devops` | OAuth2 on first use |
 | `trivy` | local (`trivy mcp`) | `@security` only | `brew install trivy` + `trivy plugin install mcp` |
-| `kubernetes` | local (`npx @modelcontextprotocol/server-kubernetes`) | `@devops`, `@debug` | `kubectl` configured context |
+| `kubernetes` | local (`npx mcp-server-kubernetes`) | `@devops`, `@debug` | `kubectl` configured context |
+| `aws-cost` | local (`uvx awslabs.billing-cost-management-mcp-server`) | `@devops`, `@architect` | `AWS_PROFILE` + `AWS_REGION` + IAM perms (`ce:*`, `budgets:*`, `compute-optimizer:*`) |
+| `aws-docs` | local (`uvx awslabs.aws-documentation-mcp-server`) | all — ask first | none (public docs) |
+| `aws-api` | local (`uvx mcp-proxy-for-aws`) | `@devops` | `AWS_PROFILE` + `AWS_REGION` (preview — CloudTrail audited) |
+| `eks` | local (`uvx awslabs.eks-mcp-server`) | `@devops`, `@debug` | `AWS_PROFILE` + `AWS_REGION` |
+| `git` | local (`uvx mcp-server-git`) | `@reviewer`, `@debug`, `@explore` | none — uses CWD; git_commit/add/reset/create_branch/checkout blocked globally |
+| `filesystem` | local (`npx @modelcontextprotocol/server-filesystem`) | `@build`, `@backend`, `@frontend`, `@devops`, `@docs` | none — allowed root: `$HOME` |
 
 ### GitLab write operations
 
