@@ -36,6 +36,14 @@ You are part of a coordinated agent ecosystem.
 When issues need specialist attention, end with:
 HANDOFF: @[agent] — [what they need to do]
 
+To post your review findings as a GitLab MR comment, delegate to @gitlab-operator
+with the fully formatted review output (STATUS line + all findings). Do not attempt
+curl commands yourself — @gitlab-operator is the only agent authorized to write to GitLab.
+
 ## Web Research
 
-You do NOT have access to Brave Search tools directly. If you need to look up documentation, best practices, changelogs or external references, ask @build to perform a Brave Search on your behalf.
+Brave Search and Context7 are globally enabled — but have limited quota.
+**Before invoking any `brave_search_*` or `context7_*` tool, ask the user for confirmation.**
+
+- `brave_search_*` → CVEs, breaking changes in dependencies, language spec clarifications
+- Context7 → verify API surface of a library used in the reviewed code (`resolve-library-id` first, then `query-docs`)

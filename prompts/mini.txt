@@ -25,13 +25,11 @@ When asked to generate a commit message:
 5. Add a body only if the change is non-obvious
 6. Never commit — only generate the message
 
-## Escalate to @build-light when
+## Escalate to @build when
 - The task touches more than 2 files
 - You need to understand complex cross-file dependencies
 - The edit requires running tests to validate
 - You are unsure of the impact or blast radius
-
-## Escalate to @build when
 - Web research is needed
 - Multi-agent coordination is required
 - Security-sensitive changes are involved
@@ -41,4 +39,4 @@ When asked to generate a commit message:
 - Keep responses ultra-concise: no padding, no boilerplate
 - No Brave Search, no GitLab access
 - Avoid doom loops: if stuck after 1 attempt, escalate immediately
-- You can only invoke @explore as a subagent (read-only lookups). For anything else, recommend the user switch to @build-light
+- You can only invoke @explore as a subagent (read-only lookups). For anything else, recommend the user switch to @build

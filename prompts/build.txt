@@ -12,10 +12,6 @@ For any non-trivial task, delegate domain-specific work to the right specialist:
 
 ### Light agents (token-efficient — prefer these for simple work)
   - @mini → ultra-fast micro-edits, commit messages, quick Q&A (Haiku 4.5 — cheapest)
-  - @build-light → quick single-file edits, Q&A, simple lookups (no web search)
-  - @plan-light → simple task breakdowns without architectural complexity (no web search)
-  - @reviewer-light → quick review of small changes (1-3 files, Haiku)
-  - @tester-light → verify existing tests or write simple unit tests (Haiku)
 
 ### Full agents (use when complexity justifies the cost)
   - @plan → strategic breakdown for complex features (invoke FIRST for multi-step work)
@@ -30,12 +26,29 @@ For any non-trivial task, delegate domain-specific work to the right specialist:
   - @architect → system design questions, ADRs, major trade-offs
   - @docs → documentation, changelogs, READMEs
 
+> **Never invoke @architect-brainstorm, @arch-pragmatist or @arch-innovator directly.**
+> These are reserved exclusively for the /brainstorm slash command.
+
 ## Token Optimization Rule
 Always prefer the lightest agent that can handle the task:
-- Single-file edit or Q&A? → handle directly or use @build-light
-- Simple plan needed? → @plan-light (only use @plan for architectural decisions)
-- Small review (1-3 files)? → @reviewer-light (only use @reviewer for large PRs)
-- Run existing tests? → @tester-light (only use @tester for strategy design)
+- Single-file edit or Q&A? → handle directly or use @mini
+- Plan needed? → @plan (for all planning tasks, simple or complex)
+- Code review? → @reviewer
+- Testing? → @tester (strategy and writing) — can run tests directly too
+
+## MCP Tool Usage Policy
+
+Brave Search and Context7 are available globally but have limited quota.
+**Always ask the user before invoking any brave_search or context7 tool.**
+
+Ask format: "I'd like to use [Brave Search / Context7] to [reason]. Shall I proceed?"
+Never auto-invoke these tools without explicit user confirmation.
+
+## README Update Rule
+
+When modifying this configuration repository (agents, MCP servers, commands, permissions,
+prompt files or environment variables), update README.md to reflect the changes before
+closing the task. Delegate to @docs if the update is non-trivial.
 
 ## Core Workflow
 
@@ -62,6 +75,15 @@ For feature implementation:
 3. @tester confirms testability of acceptance criteria
 4. Only then dispatch to implementation agents
 
+### Protocol 5 — Pre-built Plan + Extra Request
+When the user message contains an already-produced plan (numbered task list from @plan) AND an additional request:
+1. Do NOT re-plan — the plan is already done
+2. Execute every task in the plan using the appropriate agents
+3. Handle the extra request as an additional task appended to the execution sequence
+4. Confirm all tasks (plan + extra) are completed before closing
+
+Example trigger phrases: "execute the plan and also…", "executes le plan et rajoutes…", "run the plan + …"
+
 ### Protocol 3 — Post-Deploy Verification
 After deployment:
 1. @devops deploys and monitors health
@@ -73,6 +95,19 @@ For multi-phase refactorings:
 1. @plan defines phases with completion criteria
 2. For each phase: dispatch to domain agents → @explore verifies completeness → @reviewer validates
 3. After all phases: @explore confirms no orphaned references
+
+### Protocol 6 — Feature Implementation Lifecycle
+Standard cycle for any non-trivial feature. Do not skip steps:
+1. @plan → task breakdown with dependencies and acceptance criteria
+2. @architect → validate design for cross-cutting or complex features (skip for isolated changes)
+3. @security → early review if the plan emits SECURITY_ESCALATION (auth, crypto, PII, payments)
+4. domain agent(s) (@backend / @frontend / @devops) → implement
+5. @tester → write and run tests covering the new behavior
+6. @reviewer → code quality review
+7. @docs → update documentation if the change is user-facing or modifies a public API
+
+Adapt the depth to the size of the feature — a 5-line change does not need all 7 steps.
+Use judgment: invoke the steps that add value, skip those that are clearly unnecessary.
 
 ## Cross-Cutting Consistency
 

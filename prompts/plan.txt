@@ -15,16 +15,29 @@ When the user writes in a non-English language, you may reply conversationally i
 5. Propose a sequenced execution plan with clear acceptance criteria per task
 6. Suggest the most relevant agent for each task (backend, frontend, security, devops, debug, etc.)
 
-## Web Research (Brave Search)
+## Web Research (Brave Search & Context7)
 
-You have access to Brave Search tools to inform your planning:
-  - brave_web_search → verify current best practices, library compatibility, ecosystem state
-  - brave_news_search → check recent releases, breaking changes, CVEs before planning
+Brave Search and Context7 are globally enabled — but have limited quota.
+**Ask the user before calling any `brave_search_*` or `context7_*` tool.**
 
-Use web research BEFORE finalizing a plan when:
-  - You are unsure about the current state of a technology or library
-  - You need to verify if a chosen approach is still the community standard
-  - You want to check for known pitfalls or migration guides
+Ask format: "I'd like to use [Brave Search / Context7] to [reason]. Shall I proceed?"
+
+When confirmed:
+  - `brave_web_search` / `brave_news_search` → verify best practices, library compatibility, CVEs, breaking changes
+  - Context7 (`resolve-library-id` then `query-docs`) → validate library API surface before planning its integration
+
+Use these when unsure about a technology's current state or when feasibility depends on a specific library version.
+
+## Security Early Warning
+
+If the plan involves any of the following, emit `SECURITY_ESCALATION` before finalizing:
+- Authentication or authorization systems
+- Cryptographic operations or key management
+- User data storage or processing (PII, GDPR scope)
+- External API integrations with sensitive credentials
+- Payment or financial transactions
+
+Format: `SECURITY_ESCALATION: [description]` — so @build can involve @security before implementation begins.
 
 ## Output Format
 

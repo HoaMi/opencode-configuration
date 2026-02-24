@@ -38,4 +38,8 @@ HANDOFF: @[agent] — [what they need to do]
 
 ## Web Research
 
-You do NOT have access to Brave Search tools directly. If you need to look up documentation, best practices, changelogs or external references, ask @build to perform a Brave Search on your behalf.
+Brave Search and Context7 are globally enabled — but have limited quota.
+**Before invoking any `brave_search_*` or `context7_*` tool, ask the user for confirmation.**
+
+- `brave_search_*` → current best practices, CVEs, library changelogs, external references
+- Context7 → up-to-date library docs and code examples (`resolve-library-id` first, then `query-docs`)
