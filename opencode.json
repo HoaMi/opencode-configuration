@@ -255,12 +255,38 @@
       "description": "Codebase onboarding pipeline (explore → architect → docs)",
       "agent": "build"
     },
-    // /brainstorm — Dual-architect debate (Pragmatist vs Innovator) to find optimal architecture.
-    // Strategies: Quick | Debate (default) | Red-Team | Perspectives | Delphi
-    // Only reachable via this command — never invoked automatically by other agents.
-    "brainstorm": {
-      "template": "Run an architectural brainstorm on: {{input}}. Apply the strategy specified in the request (Quick / Debate / Red-Team / Perspectives / Delphi) — default is Debate. Have ARCH-A (Pragmatist) and ARCH-B (Innovator) genuinely confront each other across the required rounds. Synthesize into a concrete recommendation with an explicit Decision Log and Risk table.",
-      "description": "Dual-architect brainstorm — Pragmatist vs Innovator debate to find the optimal architecture (5 strategies)",
+    // ── Brainstorm commands (3 models: Claude Opus 4.6 · GPT-5.3-Codex · MiniMax M2.5) ──────────
+    // Each command maps to one of the 5 Mysti-inspired collaboration strategies.
+    // All are MANUAL ONLY — never invoked automatically by other agents.
+    //
+    // /brainstorm-quick      — 3 calls · fast idea clash · direct synthesis
+    // /brainstorm-debate     — 6 calls · positions + defense rounds · convergence check
+    // /brainstorm-redteam    — 6 calls · propose + dual attack (tech + ops) + harden + verify
+    // /brainstorm-perspectives — 3 calls · risk / opportunity / business-reality lenses
+    // /brainstorm-delphi     — 6–8 calls · iterative consensus · ARCH-C mediates convergence
+    "brainstorm-quick": {
+      "template": "Run an architectural brainstorm using the QUICK strategy on: {{input}}. Strategy: Quick — 3 agent calls total, 1 round each. ARCH-A (Pragmatist) presents their approach first. ARCH-B (Innovator) challenges and proposes an alternative (receives A's output). ARCH-C (Contrarian) challenges both and surfaces the key assumption neither stated (receives A+B outputs). Then synthesize immediately with a Decision Log and Risk table.",
+      "description": "Brainstorm Quick — 3 agents · 1 round each · fast synthesis",
+      "agent": "architect-brainstorm"
+    },
+    "brainstorm-debate": {
+      "template": "Run an architectural brainstorm using the DEBATE strategy on: {{input}}. Strategy: Debate — 6 agent calls, 2 rounds. Round 1: ARCH-A presents → ARCH-B challenges with alternative → ARCH-C challenges both and identifies blind spots. Round 2: ARCH-A defends/adapts against B and C → ARCH-B refines final position against A's defense and C's critique → ARCH-C scores convergence (0–10) and flags remaining sticking point. Synthesize with Decision Log and Risk table.",
+      "description": "Brainstorm Debate — 3 agents · 2 rounds · convergence score from ARCH-C",
+      "agent": "architect-brainstorm"
+    },
+    "brainstorm-redteam": {
+      "template": "Run an architectural brainstorm using the RED-TEAM strategy on: {{input}}. Strategy: Red-Team — 6 agent calls. Round 1: ARCH-A proposes a concrete design → ARCH-B attacks with technical threats and failure modes (receives A) → ARCH-C attacks with operational, organizational and business risk threats (receives A+B). Round 2: ARCH-A hardens the proposal against all attacks from B and C → ARCH-B verifies technical risk coverage in the hardened design → ARCH-C verifies operational/business risk coverage. Synthesize the hardened architecture with Decision Log and Risk table.",
+      "description": "Brainstorm Red-Team — propose + dual attack (technical + operational) + harden + verify",
+      "agent": "architect-brainstorm"
+    },
+    "brainstorm-perspectives": {
+      "template": "Run an architectural brainstorm using the PERSPECTIVES strategy on: {{input}}. Strategy: Perspectives — 3 agent calls, one per lens. ARCH-A (risk lens): enumerate everything that could go wrong with each option — failure modes, hidden costs, team risks. ARCH-B (opportunity lens): innovation potential, ecosystem leverage, future optionality (receives A). ARCH-C (business reality lens): team capability, timeline, budget, org constraints, vendor lock-in (receives A+B). Synthesize all three lenses into a balanced recommendation with Decision Log and Risk table.",
+      "description": "Brainstorm Perspectives — risk lens / opportunity lens / business-reality lens",
+      "agent": "architect-brainstorm"
+    },
+    "brainstorm-delphi": {
+      "template": "Run an architectural brainstorm using the DELPHI strategy on: {{input}}. Strategy: Delphi — 6 to 8 agent calls with iterative convergence, ARCH-C as mediator. Round 1: ARCH-A initial proposal → ARCH-B refines or diverges (receives A) → ARCH-C mediates: identifies common ground, key divergences, and asks the clarifying question neither answered (receives A+B). Round 2: ARCH-A incorporates B's valid points and responds to C's mediation → ARCH-B final position (receives A R2 + C R1) → ARCH-C scores convergence: if ≥7/10 proceed to synthesis; otherwise add Round 3 (ARCH-A final concessions → ARCH-B final acceptance). Synthesize when convergence is reached, with Decision Log and Risk table.",
+      "description": "Brainstorm Delphi — iterative consensus · ARCH-C mediates · converges at ≥7/10",
       "agent": "architect-brainstorm"
     }
   },
@@ -717,9 +743,10 @@
 
     // ─── Architect-Brainstorm (Opus 4.6 — orchestrator) ─────────────────────────
     // MANUAL ONLY — only reachable via /brainstorm. Never invoked automatically.
-    // Orchestrates @arch-pragmatist (Claude Opus) vs @arch-innovator (GPT-5.2-Codex).
+    // Orchestrates @arch-pragmatist (Claude Opus 4.6) vs @arch-innovator (GPT-5.3-Codex)
+    // vs @arch-contrarian (MiniMax M2.5) across 5 strategies.
     "architect-brainstorm": {
-      "description": "Brainstorm orchestrator: coordinates @arch-pragmatist vs @arch-innovator across 5 strategies, then synthesizes. Manual only — /brainstorm command only.",
+      "description": "Brainstorm orchestrator: coordinates @arch-pragmatist vs @arch-innovator vs @arch-contrarian across 5 strategies, then synthesizes. Manual only — /brainstorm command only.",
       "model": "{env:OPENCODE_MODEL_ARCHITECT}",
       "mode": "subagent",
       "color": "#0EA5E9",
@@ -738,10 +765,11 @@
         "webfetch": "allow",
         "question": "allow",
         "task": {
-          // orchestrator can invoke the two debate personas + explore for pre-debate codebase mapping
+          // orchestrator can invoke the three debate personas + explore for pre-debate codebase mapping
           "*": "deny",
           "arch-pragmatist": "allow",
           "arch-innovator": "allow",
+          "arch-contrarian": "allow",
           "explore": "allow"
         }
       }
@@ -769,7 +797,7 @@
       }
     },
 
-    // ─── Arch-Innovator (GPT-5.2-Codex — Innovator debate persona) ───────────
+    // ─── Arch-Innovator (GPT-5.3-Codex — Innovator debate persona) ───────────
     // Subagent of architect-brainstorm only. Never invoked by any other agent.
     "arch-innovator": {
       "description": "Brainstorm persona: Innovator architect — scalability, modern patterns, future-proofing. Only invoked by @architect-brainstorm.",
@@ -779,6 +807,30 @@
       "temperature": 0.8,
       "steps": 30,
       "prompt": "{file:./prompts/arch-innovator.txt}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "codesearch": "allow",
+        "webfetch": "allow",
+        "question": "allow"
+      }
+    },
+
+    // ─── Arch-Contrarian (MiniMax M2.5 — Contrarian debate persona) ──────────
+    // Subagent of architect-brainstorm only. Never invoked by any other agent.
+    // Challenges assumptions, surfaces blind spots, brings business/operational reality.
+    // Uses MiniMax M2.5 — set OPENCODE_MODEL_ARCH_CONTRARIAN to your MiniMax M2.5 model ID.
+    "arch-contrarian": {
+      "description": "Brainstorm persona: Contrarian — challenges assumptions of both architects, surfaces blind spots, business/operational reality check. Only invoked by @architect-brainstorm.",
+      "model": "{env:OPENCODE_MODEL_ARCH_CONTRARIAN}",
+      "mode": "subagent",
+      "color": "#F97316",
+      "temperature": 0.7,
+      "steps": 25,
+      "prompt": "{file:./prompts/arch-contrarian.txt}",
       "permission": {
         "bash": "deny",
         "edit": "deny",

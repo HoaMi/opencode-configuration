@@ -44,7 +44,11 @@ Personal repository to manage and version [opencode](https://opencode.ai) config
 | `/refactor` | @build | Guided refactoring (architect → reviewer → implement → verify) |
 | `/document` | @build | Auto-documentation (explore → docs) |
 | `/onboard` | @build | Codebase onboarding guide (explore → architect → docs) |
-| `/brainstorm` | @architect-brainstorm | Dual-architect debate (Pragmatist vs Innovator) — 5 strategies |
+| `/brainstorm-quick` | @architect-brainstorm | 3-model brainstorm · 3 calls · fast synthesis |
+| `/brainstorm-debate` | @architect-brainstorm | 3-model brainstorm · 6 calls · 2 rounds · convergence score |
+| `/brainstorm-redteam` | @architect-brainstorm | 3-model brainstorm · dual attack (tech + ops) + harden |
+| `/brainstorm-perspectives` | @architect-brainstorm | 3-model brainstorm · risk / opportunity / business lenses |
+| `/brainstorm-delphi` | @architect-brainstorm | 3-model brainstorm · iterative consensus · ARCH-C mediates |
 
 ## Environment Variables
 
@@ -71,6 +75,11 @@ export OPENCODE_MODEL_TESTER="github-copilot/claude-sonnet-4.6"
 export OPENCODE_MODEL_DOCS="opencode/minimax-m2.5-free"
 export OPENCODE_MODEL_GITLAB_OPERATOR="opencode/minimax-m2.5-free"
 
+# ── Brainstorm — 3-model confrontation ────────────────────────────────────────
+export OPENCODE_MODEL_ARCH_PRAGMATIST="opencode/claude-opus-4-6"   # ARCH-A
+export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.3-codex"      # ARCH-B
+export OPENCODE_MODEL_ARCH_CONTRARIAN="opencode/minimax-m2.5-free" # ARCH-C
+
 # ── AWS MCP servers ───────────────────────────────────────────────────────────
 export AWS_PROFILE="default"           # AWS profile for aws-cost, aws-api, eks MCPs
 export AWS_REGION="eu-west-3"          # AWS region
@@ -78,47 +87,51 @@ export AWS_REGION="eu-west-3"          # AWS region
 
 ## Brainstorm Mode
 
-`/brainstorm` activates a dual-architect debate between two opposing philosophies:
+Five dedicated commands activate a **3-model architectural debate** between three opposing personas, inspired by [Mysti](https://github.com/DeepMyst/Mysti)'s Brainstorm Collaboration feature.
 
 | Persona | Model | Philosophy |
 |---------|-------|-----------|
-| **ARCH-A** "The Pragmatist" | `opencode/claude-opus-4-6` | Simplicity, proven patterns, operational cost, time-to-market |
-| **ARCH-B** "The Innovator" | `opencode/gpt-5.2-codex` | Scalability, correctness, future-proofing, modern patterns |
+| **ARCH-A** "The Pragmatist" | `opencode/claude-opus-4-6` | Simplicity, proven patterns, operational cost, TCO |
+| **ARCH-B** "The Innovator" | `opencode/gpt-5.3-codex` | Scalability, correctness, future-proofing, modern patterns |
+| **ARCH-C** "The Contrarian" | `opencode/minimax-m2.5-free` | Challenges assumptions, business/ops reality, convergence assessor |
 
-### Strategies
+### Commands and strategies
 
-| Strategy | Use when |
-|----------|---------|
-| `quick` | Time-boxed decision or simple trade-off |
-| `debate` *(default)* | Evaluating a specific proposed approach |
-| `red-team` | Security-sensitive decisions, failure modes, high blast-radius changes |
-| `perspectives` | Technology selection, build-vs-buy, paradigm choices |
-| `delphi` | Complex multi-factor decisions needing iterative consensus |
+| Command | Calls | Use when |
+|---------|-------|---------|
+| `/brainstorm-quick` | 3 | Time-boxed decision, quick trade-off exploration |
+| `/brainstorm-debate` | 6 | Standard architectural decision — positions + defense rounds |
+| `/brainstorm-redteam` | 6 | Security-sensitive design, failure modes, high blast-radius — ARCH-B attacks technical, ARCH-C attacks operational/business |
+| `/brainstorm-perspectives` | 3 | Technology selection, build-vs-buy — risk / opportunity / business-reality lenses |
+| `/brainstorm-delphi` | 6–8 | Complex multi-factor decisions — iterative consensus, ARCH-C mediates until ≥7/10 convergence |
 
 ### Usage
 
 ```
-/brainstorm should we use a monolith or microservices for this project?
-/brainstorm red-team: design of the authentication system
-/brainstorm perspectives: PostgreSQL vs MongoDB for the user events store
-/brainstorm delphi: event-driven vs request-response for the notification service
+/brainstorm-debate should we use a monolith or microservices for this project?
+/brainstorm-redteam design of the authentication system
+/brainstorm-perspectives PostgreSQL vs MongoDB for the user events store
+/brainstorm-delphi event-driven vs request-response for the notification service
+/brainstorm-quick which caching strategy for the API layer?
 ```
 
 ### How it works
 
-1. **Pre-debate**: `@explore` maps the codebase and produces a SCOPE block — injected into both agents' first prompts so the debate is grounded in the actual project (skipped for greenfield topics)
-2. **Debate rounds**: ARCH-A and ARCH-B alternate positions according to the chosen strategy
-3. **Escalation signals**: both personas emit `SECURITY_ESCALATION`, `TEST_GAP` or `ARCH_QUESTION` when warranted — the orchestrator surfaces these in the synthesis
-4. **Synthesis**: ends with a **Decision Log**, a **Risks & Mitigations** table, and a **HANDOFF** to `@architect` (ADR) or `@plan` (implementation)
+1. **Pre-debate**: `@explore` maps the codebase and produces a SCOPE block — injected into all three agents' first prompts (skipped for greenfield topics)
+2. **Debate rounds**: ARCH-A, ARCH-B and ARCH-C exchange positions according to the chosen strategy
+3. **Escalation signals**: all three personas emit `SECURITY_ESCALATION`, `TEST_GAP` or `ARCH_QUESTION` when warranted; ARCH-C can also emit `REFRAME` if the problem statement itself is flawed — the orchestrator pauses and surfaces it to the user before continuing
+4. **Convergence**: ARCH-C scores agreement (0–10) in Round 2+ for Debate and Delphi; ≥7/10 triggers synthesis, otherwise additional rounds are added (Delphi max 3 rounds)
+5. **Synthesis**: ends with a **Decision Log**, a **Risks & Mitigations** table, a **Validated Assumptions** section, and a **HANDOFF** to `@architect` (ADR) or `@plan` (implementation)
 
-> **Note:** `@architect-brainstorm`, `@arch-pragmatist` and `@arch-innovator` are only
-> reachable via `/brainstorm` — never invoked automatically by other agents.
+> **Note:** `@architect-brainstorm`, `@arch-pragmatist`, `@arch-innovator` and `@arch-contrarian`
+> are only reachable via `/brainstorm-*` commands — never invoked automatically by other agents.
 
 ### Required env vars (`~/.zshrc`)
 
 ```bash
 export OPENCODE_MODEL_ARCH_PRAGMATIST="opencode/claude-opus-4-6"
-export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.2-codex"
+export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.3-codex"
+export OPENCODE_MODEL_ARCH_CONTRARIAN="opencode/minimax-m2.5-free"
 ```
 
 ---

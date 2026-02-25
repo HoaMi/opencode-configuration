@@ -67,7 +67,11 @@ No automated test suite exists. To verify changes:
 | `/document`  | @build  | Auto-documentation pipeline (explore → docs) |
 | `/refactor`  | @build  | Guided refactor (architect → reviewer → implement → verify) |
 | `/onboard`   | @build  | Codebase onboarding guide (explore → architect → docs) |
-| `/brainstorm` | @architect-brainstorm | Dual-architect debate — 5 strategies (Quick / Debate / Red-Team / Perspectives / Delphi) |
+| `/brainstorm-quick` | @architect-brainstorm | 3-model brainstorm · 3 calls · 1 round each · direct synthesis |
+| `/brainstorm-debate` | @architect-brainstorm | 3-model brainstorm · 6 calls · 2 rounds · convergence score by ARCH-C |
+| `/brainstorm-redteam` | @architect-brainstorm | 3-model brainstorm · 6 calls · propose + dual attack (tech + ops) + harden + verify |
+| `/brainstorm-perspectives` | @architect-brainstorm | 3-model brainstorm · 3 calls · risk / opportunity / business-reality lenses |
+| `/brainstorm-delphi` | @architect-brainstorm | 3-model brainstorm · 6–8 calls · iterative consensus · ARCH-C mediates convergence |
 
 ---
 
@@ -89,9 +93,10 @@ No automated test suite exists. To verify changes:
 | `tester`       | Sonnet 4.6      | subagent  | 60 steps     | Test strategy, TDD/BDD, E2E |
 | `docs`         | MiniMax M2.5 Free | subagent  | 40 steps     | READMEs, JSDoc, changelogs |
 | `gitlab-operator` | MiniMax M2.5 Free | subagent  | 20 steps     | GitLab REST write ops (MR comments, labels, approvals) via curl |
-| `architect-brainstorm` | Opus 4.6 | subagent | 70 steps | Brainstorm orchestrator — coordinates the two personas and synthesizes. **Manual only** via `/brainstorm` |
-| `arch-pragmatist` | Claude Opus 4.6 | subagent | 30 steps  | Debate persona: Pragmatist. Only invoked by `@architect-brainstorm` |
-| `arch-innovator` | GPT-5.2-Codex | subagent | 30 steps  | Debate persona: Innovator. Only invoked by `@architect-brainstorm` |
+| `architect-brainstorm` | Opus 4.6 | subagent | 70 steps | Brainstorm orchestrator — coordinates three personas and synthesizes. **Manual only** via `/brainstorm-*` commands |
+| `arch-pragmatist` | Claude Opus 4.6 | subagent | 30 steps  | Debate persona: Pragmatist (simplicity, TCO, proven patterns). Only invoked by `@architect-brainstorm` |
+| `arch-innovator` | GPT-5.3-Codex | subagent | 30 steps  | Debate persona: Innovator (scalability, modern patterns, future-proofing). Only invoked by `@architect-brainstorm` |
+| `arch-contrarian` | MiniMax M2.5 | subagent | 25 steps  | Debate persona: Contrarian (challenges assumptions, business/ops reality, convergence assessor). Only invoked by `@architect-brainstorm` |
 
 **Token Optimization Rule:** always use the lightest agent that can handle the task.
 Prefer `@mini` for single-line edits and quick Q&A, `@build` for multi-file work and
@@ -147,9 +152,10 @@ auth, crypto, PII, external credentials, or payments — so `@security` is invol
 ### Brainstorm Protocol
 `@architect-brainstorm` follows this specific flow:
 1. **Pre-debate**: calls `@explore` to get a SCOPE block of the relevant codebase (skipped for greenfield topics)
-2. **Debate rounds**: invokes `@arch-pragmatist` and `@arch-innovator` in the order defined by the chosen strategy, passing the SCOPE block + previous round outputs as context
-3. **Persona signals**: both persona agents emit `SECURITY_ESCALATION`, `TEST_GAP` and `ARCH_QUESTION` when genuinely warranted — the orchestrator surfaces these in the synthesis
-4. **Handoff**: ends with `HANDOFF: @architect` (ADR) or `HANDOFF: @plan` (implementation), with the full Decision Log and Risks table as context
+2. **Debate rounds**: invokes `@arch-pragmatist`, `@arch-innovator` and `@arch-contrarian` in the order defined by the chosen strategy, passing the SCOPE block + previous round outputs as context
+3. **Persona signals**: all three agents emit `SECURITY_ESCALATION`, `TEST_GAP`, `ARCH_QUESTION` when warranted; `@arch-contrarian` can also emit `REFRAME` if the problem statement itself is flawed — the orchestrator pauses synthesis and surfaces any `REFRAME` to the user before continuing
+4. **Convergence**: `@arch-contrarian` scores agreement (0–10) in Round 2+ for Debate and Delphi strategies; ≥7/10 triggers synthesis, otherwise additional rounds are added
+5. **Handoff**: ends with `HANDOFF: @architect` (ADR) or `HANDOFF: @plan` (implementation), with the full Decision Log and Risks table as context
 
 ---
 
@@ -334,9 +340,10 @@ export OPENCODE_MODEL_DEVOPS="github-copilot/claude-sonnet-4.6"
 export OPENCODE_MODEL_REVIEWER="github-copilot/claude-sonnet-4.6"
 export OPENCODE_MODEL_ARCHITECT="github-copilot/claude-opus-4.6"
 
-# ── Brainstorm — real two-model confrontation ─────────────────────────────────
+# ── Brainstorm — real three-model confrontation ───────────────────────────────
 export OPENCODE_MODEL_ARCH_PRAGMATIST="opencode/claude-opus-4-6"   # ARCH-A: Pragmatist
-export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.2-codex"      # ARCH-B: Innovator
+export OPENCODE_MODEL_ARCH_INNOVATOR="opencode/gpt-5.3-codex"      # ARCH-B: Innovator
+export OPENCODE_MODEL_ARCH_CONTRARIAN="opencode/minimax-m2.5-free" # ARCH-C: Contrarian
 export OPENCODE_MODEL_TESTER="github-copilot/claude-sonnet-4.6"
 export OPENCODE_MODEL_DOCS="opencode/minimax-m2.5-free"
 export OPENCODE_MODEL_GITLAB_OPERATOR="opencode/minimax-m2.5-free"
@@ -358,7 +365,8 @@ export OPENCODE_MODEL_GITLAB_OPERATOR="opencode/minimax-m2.5-free"
 | `OPENCODE_MODEL_REVIEWER` | `reviewer` | `github-copilot/claude-sonnet-4.6` |
 | `OPENCODE_MODEL_ARCHITECT` | `architect` + brainstorm synthesizer | `github-copilot/claude-opus-4.6` |
 | `OPENCODE_MODEL_ARCH_PRAGMATIST` | `arch-pragmatist` | `opencode/claude-opus-4-6` |
-| `OPENCODE_MODEL_ARCH_INNOVATOR` | `arch-innovator` | `opencode/gpt-5.2-codex` |
+| `OPENCODE_MODEL_ARCH_INNOVATOR` | `arch-innovator` | `opencode/gpt-5.3-codex` |
+| `OPENCODE_MODEL_ARCH_CONTRARIAN` | `arch-contrarian` | `opencode/minimax-m2.5-free` |
 | `OPENCODE_MODEL_TESTER` | `tester` | `github-copilot/claude-sonnet-4.6` |
 | `OPENCODE_MODEL_DOCS` | `docs` | `opencode/minimax-m2.5-free` |
 | `OPENCODE_MODEL_GITLAB_OPERATOR` | `gitlab-operator` | `opencode/minimax-m2.5-free` |
